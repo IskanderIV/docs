@@ -299,3 +299,35 @@ Synchronized blocks also guarantee that all variables accessed inside the synchr
 and when the thread exits the synchronized block, all updated variables will be flushed back to main memory again, 
 regardless of whether the variable is declared volatile or not.
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+FUTURE<>
+Now, the interesting question is, how does the system know which Future instance is linked
+to which (Callable or Runnable) Job? Does the Executor maintain some kind of
+internal Map to keep track of it or is there a better way of handling it?
+// Вопрос: На самом деле больше интересует, как F связан с потоком, исполняющим Callable?
+И как мы можем через него смотреть, что происходит в исполняющем оптоке из вызывающего?
+// Ответ: На самом деле все базируется на шаринге объектов между потоками. Т.е. к FutureTask
+есть доступ как у исполняющего потока, т.к. FT реализует Runnable (R) и исполняющий поток запоминает ссылку на него
+и вызывает его метод run() при вызове своего метода run(), а вызывающий поток получает ссылку на него,
+когда получает F при сабмите таски в executer или запуске FT в new Tread(FT).start(), ведь FT реализует F и R!!!
+
+Here, we can see that the instance of Future is actually an instance of its subclass FutureTask which stores
+Callable reference as its member variable. This is how a Future instance is linked to the submitted job.
+
+ See Future_hierarhy.png
+
+Following are the steps which are performed when a Job is submitted to an executor:
+
+1. The client creates a Callable instance callable by providing a definition of call method.
+2. The callable is submitted to an Executor.
+3. The Executor creates a FutureTask instance future by passing this callable to its constructor.
+This means future has a reference to the Callable which needs to be executed.
+4. This future is returned to the client by the Executor.
+5.  When it’s time, Executor calls run method on the future which in turn calls a call method on callable.
+6. When callable is executed successfully, its result is stored in the future and is returned
+to the client when get method is called on the future.
+
+See How FutureTask works.png for more info
+
+Вывод: На момент, когда ты еще ожидаешь получение значения из F поток в ThreadPool, исполняющий Callable для
+этой F еще работает (RUNNING).
