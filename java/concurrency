@@ -1,0 +1,301 @@
+Concurrency - понимаем под этим multitreading когда несколько задач выполняются одновременно, и каждой выделяется время по-очереди.
+Parallelizm - это когда одна большая задача разбивается на несколько потоков.
+
+Цели многопоточности - перформанс (параллелизм выполнения одной задачи), и responsibless (multitask) (работа серверных приложений, ос и тп)
+
+Запуск приложения - это создание инстанса программы из файла на HDD в RAM. При запуске приложения создается соответствующий процесс.
+В нем лежат мета данные (ПИД и тп), данные программы - heap, сам код  программы, файлы для работы программы и ТРЕДЫ.
+Тредов может быть много и они имеют свои стеки, но все выше перечисленные выше (files, heap, code) у них общие - они имеют туда доступ.
+
+Latency- the time to competion of a task. Measured in time units
+
+Throughput - the amount of tasks completed in a given period. Measured in tasks/time unit
+
+Stack - в него заносятся аргументы методов и локальные переменные в порядке FILO. Stack я вижу в идее в колонке, когда дебажу. 
+
+References:
+ - are allocated on the stack if they are local
+ - are allocated on the heap if they are members of a class
+ 
+Objects: are always on the heap
+
+Для потоков heap расшарен и туда входят Objects, Class members, Static variables (because they are members of Class class)
+Для потоков Stack эксклюзивен и туда входят local primitive types or local references
+
+Завел я локальную переменную х в методе. Примитив. Она будет с теке и пожтому, если два потока будут исполнять одновременно этот метод, то
+будут иметь разные переменные х.
+
+Представим метод get(), который содержит List<String> list = new ArrayList<>(); тогда объект будет в хипе, а локальная ссылка list будет для потока в стеке.
+
+Два concurrent threads: one does 10 increments of shared variable, second does 10 decrements of the same variable.
+Question: why the result can be not 0 when I make like this: thread1.start(); thread2.start(); thread1.join(); thread2.join(); var.getResult();
+Because increment operation has 3 steps: 1. currentVal <- var = 0;  2. newVal <- currentVal + 1 = 1; 3. var <- newVal; 
+if another thread will injected inside between steps 2 and 3 doing something with var, then this thread couldn't change var, because right after that current thread goes to step 3
+and rewrite var.
+
+Synchronized. Синхххро на блоке иногда бывает гораздо более гибкой. Ведь можно завести спец объект - лок - и синхронизироваться на нем. А это гибче,
+ведь можно сделать синхронизацию вне объекта, где лежит лок. А нахера?
+А еще можно сделать несколько локов и тогда потоки будут захватывать разные мониторы. Это иногда лучше чем если бы поток захватил монитор всегод объекта
+и другие потоки ждалибы,пока он нагуляется по внутренним синхронизированным методам. 
+Object lock = new Object();
+Object lock2 = new Object();
+
+public synchronized void increment() {
+	synchronized(lock) {
+		items++;
+	}
+}
+
+public synchronized void decrement() {
+	synchronized(lock2) {
+		items--;
+	}
+}
+
+Зачастую concurrent - означает выполнение потоков по-очереди. Проблема с атомарностью это как раз concurrent problem. 
+Когда один поток прерывается и влезает другой. 
+
+All reference assingments are atomic!!! That is a big deal because we can get and set references to objests atomically.
+That is why we shoudn't synchronize get and set methods.
+
+VOLATILE
+
+All assignments to primitve type except long and double 
+(because they are 64 bit long and its setting operation divides on two parts withlower part and upper part) are also atomic.
+
+volatile double a = 1.0;
+volatile double b = 2.0;
+a = b; // atomic becuase volatile lets them be assigned (read and write) in one operation
+
+In Java, each thread has a separate memory space known as working memory; this holds the values of different variables used for performing operations. 
+After performing an operation, thread copies the updated value of the variable to the main memory, and from there other threads can read the latest value.
+Simply put, the volatile keyword marks a variable to always go to main memory, for both reads and writes, in the case of multiple threads accessing it
+
+For all the multithreaded applications, we need to ensure a couple of rules for a consistent behavior:
+Mutual Exclusion – only one thread executes a critical section at a time
+Visibility – changes made by one thread to the shared data, are visible to other threads to maintain a data consistency
+Synchronized methods and blocks provide both.  Volatile is quite a useful primitive because it can help ensure the visibility aspect of the data change, without, 
+of course, providing the mutual exclusion. 
+Thus, it’s useful in the places where we are ok with multiple threads are executing a block of code in parallel but we need to ensure the visibility property.
+
+ONE MORE about Voliatile
+  - it solves Race Condition (когда два потока могут переписать данные друг друга за счет того, что критические операции не синхронизированы)  for read/write
+from/to long and doubles
+  - it solves all Data Races (это значит, что компилятор может двигать операции с целью увеличения производительности, сохраняя логику) by guaranteeing order.
+  объявление общей переменной как volatile позволяет гарантировать, что все операции определенные до операций с volatile переменной будут
+  выполнены до нее, а после - после.
+  
+  volatile int sharedVar;
+  public void method() {
+    .....// All instructions will be executed before
+	read/write (sharedVar);
+	.....// All instructions will be executed after
+  }
+  
+  Every shared var (modified by at leastone thread) should be either:
+  - Guarded by a synchronized method (or lock)
+  - or declared volatile
+
+THREAD-SAFETY Главное, чтобы другие треды не повлияли на результат
+1. Stateless Implementations
+ 
+2.Immutable Implementations (тут должна быть вставка из Блоха)
+ A class instance is immutable when its internal state can’t be modified after it has been constructed.
+ The easiest way: members areprivate final and NO setters
+ Moreover, if MessageService were actually mutable, but multiple threads only have read-only access to it, it’s thread-safe as well
+
+ 3. Thread-Local - все, что я понял - это что у каждого треда хранится мапа его собственных тред локалов, принадлежащих ему. 
+Туда можно писать чт-либо для сохранения инфы для конкретно жтого потока. Потому как все методы TreadLocal используют внутри Tread.getCurrentThread().
+НО! Почему-то ThreadLocal переменную надо делать статической и хранить в классе со статическим getter for ThreadLocal.
+class StaticClass {
+  static private ThreadLocal<User> threadLocal = new ThreadLocal<>();
+
+  static ThreadLocal<User> getThreadLocal() {
+    return threadLocal;
+  }
+}
+static private ThreadLocal<User> threadLocal = new ThreadLocal<>();
+
+ -->>!!!!!!  synchronized and concurrent collections only make the collection itself thread-safe and not the contents !!!!!!
+ ^
+ |
+ 4. Synchronized Collections
+ Collection<Integer> syncCollection = Collections.synchronizedCollection(new ArrayList<>());
+ This means that the methods can be accessed by only one thread at a time, while other threads will be blocked until the method is unlocked by the first thread.
+ Все методы внутри синхроколлекций засинхронизированы, поэтому если один поток захватит монитор коллекции, то остальные будут простаивать.
+ Влияет на перфоманс. 
+ 
+ 5. Concurrent Collections
+ concurrent collections achieve thread-safety by dividing their data into segments. 
+ In a ConcurrentHashMap, for instance, several threads can acquire locks on different map segments, so multiple threads can access the Map at the same time
+  
+  6. Atomic Objects
+
+
+
+DEAD-LOCKS
+Если есть циркулярные зависимости по локам (например, когда используются синхроблоки), тред1 использует lock(a) -> lock(b), а тред2 использует их наоборот,
+то хорошим решением является использовать локи в одинаковой последовательности, тогда они точно не проихойдут (негде появиться циклам)
+Другие техники предотвращения:
+ - WatchDog - (not possible with synchronized) как в микроконтроллере, постоянно перезаписывать регистр, и если он встал, то перезагружать контроллер.
+ Здесь watchDogом может быть отдельный поток, который будет следить за потоками и прерывать их при локе. 
+ - tryLock - (not possible with synchronized) - он возвращает false, если не смог захватить лок. И поток может спокойно выполнять свою работу дальше.
+    НО! есть вариант, что он может подождать некоторое время, чтобы успеть схватить лок. тогда tryLock(nanos)
+
+REENTRANTLOCK
+Вместо того, чтобы создавать произвольный объект и использовать его монитор как лок, мы создаем специальный reentrantLock implements Lock
+Схема его использования:
+lock.lock();
+try{
+  someOpertions();
+} finally {
+  lock.unlock();
+}
+У него также есть возможность использовать схему с tryLock. Т.е. это тот же ReentrantLock, но вместо lock() вызывается tryLock()
+У него принцип отличается. Главное, он возвращает true/false. True - если захватил лок. 
+Схема его использования:
+if(lock.tryLock()) {
+	try{
+	  someOpertions();
+	} finally {
+	  lock.unlock();
+	}
+} else {если не захватил лок}
+
+ Также в reentrantLockе много полезных методов: getQueuedThreads(); getOwner(); isLocked(); 
+ Также как и синхронайзд не гарантирует последовательность выполнения кода потоками.
+ 
+ Очень полезной фичей ReentrantLockа является метод lockInterruptibly() вместо lock(). Он позволяет прервать поток снаружи, если он попал в дедлок.
+ Схема его использования:
+try{
+  lock.lockInterruptibly();
+   try{
+      someOpertions();
+   } finally {
+      lock.unlock();
+   }
+} catch(InterruptedException e) {
+  cleanUpAndExitCorrectly();
+}
+Этот метод очень полезен при реализации WatchDogs описанных выше. Это все потому, что если внутри run() есть метод выбрасывающий interruptedException,
+то этот тред можно прервать по команде tread.interrupt();
+Synchronized blocks in Java are reentrant. This means, that if a Java thread enters a synchronized block of code, 
+and thereby take the lock on the monitor object the block is synchronized on, the thread can enter other 
+Java code blocks synchronized on the same monitor object.
+
+REENTRANTREADWRITELOCK
+Synchronized и ReentrantLock не позволяют нескольким потокам читать общие ресурсы. (Это не страшно, если критическую секцию выбрать маленькой и быстрой)
+НО! Когда операций чтения дохера, или они сложные (вычислительно), то это случай для применения ReentrantReadWriteLock. 
+ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+Lock readLock = rwLock.readLock(); - используется по схеме обычного лока с try+finally, когда надо считать общий ресурс.
+Lock writeLock = rwLock.writeLock(); - используется по схеме обычного лока с try+finally, когда надо модифицировать общий ресурс.
+
+Multiple threads can acquire the readLock simultaniously
+Only a single thread is allowed to lock a writeLock at the moment. (Тред, который повстречает залоченный код будет blocked. Ждет unlock)
+
+ReentrantReadWriteLock поддерживает Mutual Exclusion between readers and writers
+ - if a write lock is acquired, no thread can acquire a read lock
+ - if at least one thread holds a read lock, no thread can acquire a write lock
+ 
+SEMAPHORE
+
+
+
+Lock-FREE algorithms
+Bad sides of locks
+ - bottleneck
+ - switching context - time consuming
+ - deadlocks
+ - unlock - sometimes you can forgot to do that
+ 
+
+Why did we need locks at all?
+- threads accessing shared resources
+- at least one thread is modifying the shared resources
+- non atomic operations
+
+Avoiding Data RASES
+ - read/assignment on all volatile primitive types and references
+
+
+ATOMIC REFERENCE
+AtomicReference<V>. По сути, как и все атомики, содержит внутри private volatile V value ссылку. И если использовать только его set и get методы,
+то ничем от volatile не отличается. НО! Есть прекрасный метод compareAndSet(), getAndSet() - которые выполняются атомарно. 
+Плюсы метода compareAndSet()
+ - ты можешь избежать синхронизации или лока критического участка, где необходимо провести операцию смены значения по ссылке (даже пусть в несколько шагов)
+ например, что-то сделать и сменить значение. Тут применяется такой паттерн:
+ while {
+	 var = ar.get();
+	 // some actions
+	 if(!ar.compareAndSet(expectedValue: var, newValue: newVar)) {
+	   break; 
+	 } else {
+	   // maybe repeat algorithm from the beggining
+	 }
+}
+в конечном итоге все операции some actions будут выполнены tread-safety, ведь если при проверке compareAndSet var окажется ссылкой 
+на новое value, то вернется false - значит другой поток успел сука нагадить, и так будет до тех пор пока не словится тот интервал, когда ни один 
+поток не вмешается в процессе работы // some actions;
+
+SYNCHRONIZERS
+Synchronizers are objects that enable threads to wait for one another,
+allowing them to coordinate their activities. The most commonly used
+synchronizers are CountDownLatch and Semaphore. Less commonly
+used are CyclicBarrier and Exchanger. The most powerful
+synchronizer is Phaser.
+
+
+WAIT/NOTIFY
+Here is the standard idiom for using the wait method:
+// The standard idiom for using the wait method
+synchronized (obj) {
+while (<condition does not hold>)
+	obj.wait(); // (Releases lock, and reacquires on wakeup)
+... // Perform action appropriate to condition
+}
+Always use the wait loop idiom to invoke the wait method; never invoke
+it outside of a loop. The loop serves to test the condition before and after
+waiting.
+
+JAVA MEMORY MODEL
+The Java memory model specifies how the Java virtual machine works with the computer's memory (RAM).
+The Java memory model specifies how and when different threads can see values written to shared variables 
+by other threads, and how to synchronize access to shared variables when necessary.
+  The Internal Java Memory Model
+The Java memory model used internally in the JVM divides memory between thread stacks and the heap.
+a) A local variable may be of a primitive type, in which case it is totally kept on the thread stack.
+b) A local variable may also be a reference to an object. In that case the reference (the local variable) is stored on the thread stack, but the object itself if stored on the heap.
+c) An object may contain methods and these methods may contain local variables. These local variables are also stored on the thread stack, even if the object the method belongs to is stored on the heap.
+d) An object's member variables are stored on the heap along with the object itself. That is true both when the member variable is of a primitive type, and if it is a reference to an object.
+e) Static class variables are also stored on the heap along with the class definition.
+  Hardware Memory Architecture
+Each CPU contains a set of registers which are essentially in-CPU memory.
+Each CPU may also have a CPU cache memory layer.
+A computer also contains a main memory area (RAM).
+Typically, when a CPU needs to access main memory it will read part of main memory into its CPU cache. 
+It may even read part of the cache into its internal registers and then perform operations on it. 
+When the CPU needs to write the result back to main memory 
+it will flush the value from its internal register to the cache memory, and at some point flush the value back to main memory.
+  Map JMM to HMA
+The hardware memory architecture does not distinguish between thread stacks and heap. 
+On the hardware, both the thread stack and the heap are located in main memory. 
+Parts of the thread stacks and heap may sometimes be present in CPU caches and in internal CPU registers. 
+When objects and variables can be stored in various different memory areas in the computer, certain problems may occur. The two main problems are:
+ a) Visibility of thread updates (writes) to shared variables.
+If two or more threads are sharing an object, without the proper use of either volatile declarations or synchronization, 
+updates to the shared object made by one thread may not be visible to other threads.
+Imagine that the shared object is initially stored in main memory. A thread running on CPU one then reads the shared object into its CPU cache. 
+There it makes a change to the shared object. 
+As long as the CPU cache has not been flushed back to main memory, the changed version of the shared object is not visible to threads running on other CPUs.
+ b) Race conditions when reading, checking and writing shared variables.
+If two or more threads share an object, and more than one thread updates variables in that shared object, race conditions may occur.
+Imagine if thread A reads the variable count of a shared object into its CPU cache. 
+Imagine too, that thread B does the same, but into a different CPU cache. Now thread A adds one to count, and thread B does the same. 
+Now var1 has been incremented two times, once in each CPU cache.
+If these increments had been carried out sequentially, the variable count would be been incremented twice and had the original value + 2 written back to main memory.
+To solve this problem you can use a Java synchronized block. 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Synchronized blocks also guarantee that all variables accessed inside the synchronized block will be read in from main memory, 
+and when the thread exits the synchronized block, all updated variables will be flushed back to main memory again, 
+regardless of whether the variable is declared volatile or not.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

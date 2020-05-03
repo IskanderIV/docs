@@ -1,0 +1,402 @@
+run from adtech-ssp(root) -> mvn -T 1C -DskipTests clean install
+Не пропускать тесты (из-за этого может падать сборка), 
+запускать с adtech-config.conf:"default:rtbRequestCustomizer" (Multi нет в тестах), 
+и юзать -d file config/environment-doorkeeper.conf config/environment-stubbed.conf
+@Ignore DBChangelogFileTest  на время тестов
+
+
+1. environment-doorkeeper.conf 
+Хранятся настройки подключения к ssp и ssp-budget
+так если хочу к стг
+configSource {
+      driverClassName: org.postgresql.Driver
+      url: "jdbc:postgresql://spn1w5ir0ix89c.colwaardyrj6.us-east-1.rds.amazonaws.com:5432/pm-ssp"
+      username: ssp
+      password: A6e97lc6TlxKKpUmRrD
+    }
+так если на локалке разворачиваю Docker с postgres
+configSource {
+      driverClassName: org.postgresql.Driver
+      url: "jdbc:postgresql://localhost:5432/sspdb"
+      username: ssp
+      password: ssp
+    }
+
+services.technicalConfigKeeper.dsp.timeoutMs: 800 - таймаут ответа бидеров. 
+Можно им играться, если бидеры не успевают отвечать и валится 
+что-то типа Timeout on sending request 8840fc21-6255-4a74-ad9c-17dacf7ca400 to DSP 101
+
+environment-stubbed.conf
+добавить это в services, чтобы застабить Budget базу и не получать кучу ошибок из-за этого в логах
+budgetService {
+      factory: blackholeBudgetDao
+    }
+эту конфигу я брал из environment-client-33across.conf
+
+Вообще, надо приглядеться к конфигам в config папке. Видимо, если подставлять разные в -d, 
+то буду получать разные условия запуска (знать только что за что отвечает)
+	
+	
+	
+1. move terminal console to aivanov@aivanov-book:  cd ~/Projects/33Across/adtech-ssp/docker/dev
+up all needed for ssp server
+docker-compose up aerospike dsp-mock1 dsp-mock2 zookeeper kafka graphite
+
+docker-compose up --build aerospike dsp-mock1 dsp-mock2 zookeeper kafka graphite
+
+docker-compose up --build config-migration
+docker-compose up --build aerospike
+docker-compose up --build dsp-mock1
+docker-compose up --build dsp-mock2
+docker-compose up --build zookeeper
+docker-compose up --build kafka
+docker-compose up --build graphite
+docker-compose up --build grafana
+
+cd ~/Projects/33Across/adtech-ssp/docker/dev
+
+-d file /doorkeeper/adserver-application.conf /doorkeeper/adserver-servers.conf
+
+-d file config/environment-doorkeeper.conf config/environment-stubbed.conf
+
+не забыть проставить 
+config-version 1
+в таблице config-version_v2 в sspdb
+
+
+Для перезаписи адреса локальной базы на базу ссп stg
+/home/aivanov/Projects/33Across/adtech-ssp/ssp-doorkeeper/config-doorkeeper/src/main/resources/doorkeeper/adtech-config.conf
+    configSource {
+      class: net.thumbtack.ssp.budget.dao.impl.DataSourceWrap
+      driverClassName: org.postgresql.Driver
+      url: "jdbc:postgresql://spn1w5ir0ix89c.colwaardyrj6.us-east-1.rds.amazonaws.com:5432/pm-ssp"
+      username = ssp
+      password = A6e97lc6TlxKKpUmRrD
+    }
+	это нужно чтобы смотреть не в локальную базу, запущенную в докере, а в базу на стг, чтобы запросы из постмана имеле правильный отклик
+	
+
+"device": {
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Safari/605.1.15",
+    "ip": "216.160.83.56",
+
+
+DUMP
+1) через Idea
+а) выбрать ДБ и перед накаткой удалить все таблицы в локал БД
+б) Dump with 'pg_dump' (выбирал на public в stg) - а тут ничего не менять (скопируются все таблицы, sequence и inserts)
+Пример с выбором команды для pm_console:
+/usr/bin/pg_dump --file=/home/aivanov/Projects/DUMPs/stg_ssp_dump_28_02_19/stg_ssp_dump_using_pg_dump_28_02_19/stg_pm_console_dump.sql --dbname=pm-console --schema=public --username=pm-api --host=spn1w5ir0ix89c.colwaardyrj6.us-east-1.rds.amazonaws.com --port=5432
+
+в) в месте сохранения дамп файла открыть терминал (или использовать /path/to/file/dumpfile) и  
+$ cat dumpfile |  psql -h localhost -d sspdb -p 5432 -U ssp
+
+
+sudo su - postgres
+psql sspdb < pm-ssp.backup (не делал)
+
+не запускай cm с тестами - это писец как долго!!!
+Launching of Compainmanager-ui
+
+1) npm install на campaignmanager-ui
+2) CUSTOMER=33across npm start на publisher-console
+3) publisher-console/config/33across/dev.js apiHost: 'http://localhost:80..' см. ниже
+4) заходить потом на http://localhost:8089/
+такая картинка должжна быть после ввода npm start команды
+-----------------------------------
+aivanov@aivanov-book:~/Projects/33Across/campaignmanager-ui/publisher-console$ CUSTOMER=33across npm start
+
+> PublisherManager@0.5.0 start /home/aivanov/Projects/33Across/campaignmanager-ui/publisher-console
+> webpack-dev-server --inline --port 8089
+
+Building 33Across Publisher UI for 33across - dev
+clean-webpack-plugin: /home/aivanov/Projects/33Across/campaignmanager-ui/publisher-console/public/**/* has been removed.
+[HPM] Proxy created: /api  ->  http://localhost:8080
+[HPM] Proxy rewrite rule created: "^/api/auth/login" ~> "/login"
+[HPM] Proxy rewrite rule created: "^/api/auth/logout" ~> "/logout"
+ http://localhost:8089/
+webpack result is served from /
+content is served from ./public
+404s will fallback to /
+-----------------------------------
+
+<<<<<<Поднять графану и графит:
+В docker-compose.yml 
+  graphite:
+    image: nickstenning/graphite
+    ports:
+      - "8129:80" # UI
+      - "2103:2003"
+    expose:
+      - "80"
+      - "2103"
+    env_file:
+      - .env
+    networks:
+      - adserver
+ports второй не UI должен совпадать с graphiteMetricsReporter.port в metrics.conf
+    graphiteMetricsReporter {
+      class: net.thumbtack.metrics.service.GraphiteReporterService
+//      hostname: grafana.dev.thumbtack.net
+      hostname: localhost
+      port: 2103
+//      prefix: Thumbtack-SSP.localhost.pc. #must end with dot
+      prefix: pc. #must end with dot
+      period: 60 #no reporting if smaller than 1
+      time.unit: SECONDS
+      enabled.for: [ssp-server, user-tracker]
+    }
+	
+	Сам графит по адресу http://localhost:8129/ графана - http://localhost:8128 (admin/admin), там надо будет определить датасорз без пароля, просто указать на графит
+
+
+Compainmanager - джоба для CM - https://jenkins.thumbtack.net/job/Dataswitch-CM/3685/
+server.port: взять его отсюда для publisher-console/config/33across/dev.js
+
+spring.datasource.url=jdbc:postgresql://spn1w5ir0ix89c.colwaardyrj6.us-east-1.rds.amazonaws.com:5432/pm-console
+spring.datasource.username=pm-api
+spring.datasource.password=NkKU8KV3ZyFfJVvQO$1v
+
+
+creative-audit.datasource.url=jdbc:postgresql://spn1w5ir0ix89c.colwaardyrj6.us-east-1.rds.amazonaws.com:5432/pm-ssp
+creative-audit.datasource.username=across33
+creative-audit.datasource.password=f^&E7AqK8bMNSzyzdHpt
+
+если хочешь сам управлять базой ссп то накати на локалку.
+
+
+просто должен быть запущен. PublisherConsoleApiApplication. Для этого
+1) поменял PublisherConsoleApiApplication как из кастомного
+2) поменял application.properties на yml (пример в ~/Projects), а первый ваще удалил. Но если вводить новые настройки, то в пропертис они тоже нужны.
+3) В пом вставил зависимость от <artifactId>publisher-console-api-application</artifactId>
+
+settings.xml мой был
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                          https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <localRepository/>
+  <interactiveMode/>
+  <usePluginRegistry/>
+  <offline/>
+  <pluginGroups/>
+  <servers> 
+<server>
+      <id>thumbtack-nexus</id>
+      <username>adtech-assets</username>
+      <password>pnmn09_09yhQb</password>
+    </server>  
+    <server>
+      <id>thumbtack-nexus</id>
+      <username>aleksandr.ivanov</username>
+      <password>seniorBeforeJune2019!</password>
+    </server>
+    <server>
+      <id>between</id>
+      <username>adtech-assets</username>
+      <password>pnmn09_09yhQb</password>
+    </server>
+  </servers>
+  <mirrors/>
+  <proxies/>
+  <activeProfiles/>
+</settings>
+
+
+Женин settings.xml
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+<localRepository/>
+<interactiveMode/>
+<usePluginRegistry/>
+<offline/>
+<pluginGroups/>
+<servers>
+  <server>
+    <id>thumbtack-nexus</id>
+    <username>adtech-assets</username>
+    <password>pnmn09_09yhQb</password>
+  </server>
+  <server>
+    <id>adtech-assets_snapshots</id>
+    <username>adtech-assets</username>
+    <password>pnmn09_09yhQb</password>
+  </server>  
+  <server>
+    <id>thumbtack-nexus</id>
+    <username>yputsykovich</username>
+    <password>2Dcs1wfOOG0aTZ_</password>
+  </server>
+</servers>
+<mirrors/>
+<proxies/>
+<profiles/>
+<activeProfiles/>
+</settings>
+
+Ерлан settings.xml
+<settings xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0                           https://maven.apache.org/xsd/settings-1.0.0.xsd"><localRepository/><interactiveMode/><usePluginRegistry/><offline/><pluginGroups/><servers><server><id>thumbtack-nexus</id><username>adtech-assets</username><password>pnmn09_09yhQb</password></server></servers><mirrors/><proxies/><activeProfiles/></settings>
+
+My new 
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                          https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <localRepository/>
+  <interactiveMode/>
+  <usePluginRegistry/>
+  <offline/>
+  <pluginGroups/>
+  <servers> 
+<server>
+      <id>thumbtack-nexus</id>
+      <username>adtech-assets</username>
+      <password>pnmn09_09yhQb</password>
+    </server>  
+    <server>
+      <id>thumbtack-nexus</id>
+      <username>aleksandr.ivanov</username>
+      <password>%!KaliGula##</password>
+    </server>
+    <server>
+      <id>between</id>
+      <username>adtech-assets</username>
+      <password>pnmn09_09yhQb</password>
+    </server>
+<server>
+    <id>adtech-assets_snapshots</id>
+    <username>adtech-assets</username>
+    <password>pnmn09_09yhQb</password>
+  </server>
+  </servers>
+  <mirrors/>
+  <proxies/>
+  <activeProfiles/>
+</settings>
+
+
+Суровенко
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                          https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <localRepository/>
+  <interactiveMode/>
+  <usePluginRegistry/>
+  <offline/>
+  <pluginGroups/>
+  <servers>
+    <server>
+      <id>thumbtack-nexus</id>
+      <username>adtech-assets</username>
+      <password>pnmn09_09yhQb</password>
+    </server>
+    <server>
+      <id>between</id>
+      <username>adtech-assets</username>
+      <password>pnmn09_09yhQb</password>
+    </server>
+  </servers>
+  <mirrors/>
+  <proxies/>
+  <activeProfiles/>
+</settings>
+
+How to make dumpfile (use pgAdmin)
+1. Choose place
+2. Custom
+3. PreData, Data, PostData
+4. No owner
+
+Restore 
+1. Custom to tar
+2. File, no rolename
+3. PreData, Data, PostData
+4. CleanBeforeRestore
+вся эта последовательность действий стирает базу и создает таблицы. Но данные рушатся и их я ресторил созданием дампов в Идее и рестором через Run SQL Script..
+
+На стг моки бидеров 101
+http://adserver-01.stg.33across.lo:8124/bid
+102
+http://adserver-00.stg.33across.lo:8124/bid
+
+
+ dsp-mock1:
+    build: ../../ssp-test/dsp-mock
+    ports:
+      - "8124:8124"
+    expose:
+      - "8124"
+    volumes:
+      - ./dsp-mock/config:/opt/dsp-mock/config
+
+  dsp-mock2:
+    build: ../../ssp-test/dsp-mock
+    ports:
+      - "8134:8134"
+    expose:
+      - "8134"
+    volumes:
+      - ./dsp-mock2/config:/opt/dsp-mock/config
+
+Как получить Bearer Token
+
+curl -X POST \
+  https://publisher-console.stg.lineate-33x.net/api/login \
+  -H ': ' \
+  -H 'Accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -H 'cache-control: no-cache' \
+  -d '{
+  "email":"admin@dataswitch.com",
+  "password":"admin"
+}'
+
+
+https://publisher-console.prod.lineate-33x.net/#login
+creds
+
+Про подключение к Чикаго!!!
+https://wiki.thumbtack.net/Customers/33Across/Support%20card%20%28Chicago%29/?srid=w5YQ8JNC
+
+On your workstation:
+add a line  in /etc/hosts on your workstation (under the root user);
+In you terminal to log on operation gateway:
+eval $(ssh-agent -s) && ssh-add [<path-to-your-private-key>]
+ssh -A <user-name>@gw.prod.chicago.lineate-33x.net
+On operation gateway:
+ssh <internal-host-name>chicago.33across.lo # example ssh adserver-200.chicago.33across.lo
+
+https://wiki.thumbtack.net/Customers/33Across/Support%20card%20%28AWS%29/
+
+вирджиния
+
+проды
+In you terminal to log on operation gateway:
+eval $(ssh-agent -s) && ssh-add [<path-to-your-private-key>]
+ssh -A -t <user-name>@gw.prod.us.lineate-33x.net
+
+my will be
+eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa && ssh -A aleksandr.ivanov@gw.prod.chicago.lineate-33x.net
+
+On operation gateway:
+ssh <internal-host-name> # example ssh adserver-00.prod.33across.lo
+проды
+
+Operations gateway	
+gw.prod.jp.lineate-33x.net
+gw.stg.us.lineate-33x.net - 35.153.243.109
+gw.prod.us.lineate-33x.net - 34.204.238.183
+gw.prod.chicago.lineate-33x.net - 69.162.160.2
+
+copy file from host to gateway
+scp /opt/dataswitch/creative-auditor/log/application.log aleksandr.ivanov@gw.prod.chicago.lineate-33x.net:/aleksandr.ivanov/log/application.log
+copy from gateway to localhost
+scp aleksandr.ivanov@gw.prod.chicago.lineate-33x.net:/aleksandr.ivanov/log/application.log  /home/aivanov/Downloads/from_chicago/logs
+
+scp -i .ssh/id_rsa (или как там у тебя ключ называется) aleksandr.ivanov@69.162.160.7:/opt/dataswitch/creative-auditor/log/application.log /home/
+Это верно. Копирует:
+scp -i ~/.ssh/id_rsa  aleksandr.ivanov@69.162.160.7:/opt/dataswitch/creative-auditor/log/application.log /home/aivanov/Downloads/from_chicago/logs
+
+
+
+dpkg -l

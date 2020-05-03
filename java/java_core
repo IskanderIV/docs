@@ -1,0 +1,493 @@
+Мысли по ходу исследования программы 33Х
+
+1. Spring Boot
+<dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-parent</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+Так можно построить приложение на базе spring-boot. Узнать как это работает
+1.2 SB может сделать различные аппендеры для логбэка в зависимости от профиля. Делается через logback-spring.xml. (https://leodev.ru/blog/spring-boot/spring-boot-slf4j/#.XQ53BFUzY5k)
+1.3 Если не нравится шаблон логирования который предлагает Spring Boot, просто создаем стандартный файл logback.xml в корневой папке resources или корне classpath. Это переопределит шаблон логгера Spring Boot.
+
+2. Для тестов нужно: <artifactId>hamcrest-all</artifactId>, <artifactId>junit</artifactId> (необх исключить hamcrest-core, если есть свой), <artifactId>mockito-core</artifactId>
+Если не пользоваться спринг бутом, или спринг тест, то <artifactId>jersey-client</artifactId> вместо mvc
+
+3. Logging
+https://logback.qos.ch
+slf4j и 
+<groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+а также <artifactId>logback-core</artifactId>
+Appenders are responsible for delivering LogEvents to their destination. 
+AsyncAppender uses java.util.concurrent.ArrayBlockingQueue.
+the blocking queue is susceptible to lock contention and our tests showed performance may become worse when more threads are logging concurrently.
+
+<rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+            <fileNamePattern>xml-config-core.log.%i.log.gz</fileNamePattern>
+            <minIndex>1</minIndex>
+            <maxIndex>3</maxIndex>
+        </rollingPolicy>
+думаю поэтому я видел на elasticsearch-200 логи вида 1-3.log.gz
+RollingFileAppender - это скорее всего как будут лог файлы сохраняться. можно задать, чтобы менялось название файла, зиповался и тп
+Logback, данный фреймворк используется только в связке с оберткой SLF4J.
+Для начала работы вам необходимы logback-core-1.x.jar и logback-classic-1.x.x.jar, а также slf4j-api-1.x.x.jar
+SLF4J - simple logger factory for java. Обертка над logback. 
+Конфигурация logback ищется в classpath в следующем порядке:
+ 1. logback.groovy
+ 2. logback-test.xml
+ 3. logback.xml
+ 4. базовую конфигурацию — выводим сообщения на консоль
+Основными элементами конфигурации являются логгеры, аппендеры, лайауты, и фильтры
+Based on our previous work on log4j, logback internals have been re-written to perform about ten times faster on certain critical execution paths. Not only are logback components faster, they have a smaller memory footprint as well.
+logging level is set to WARN so that only warnings and errors are logged
+Logback lof stack traces with packaging data: at org.apache.struts.action.RequestProcessor.process(RequestProcessor.java:236) [struts-1.2.9.jar:1.2.9]. From the above, you can recognize that the application is using Struts version 1.2.9
+Filters are organized as an ordered list and are based on ternary logic. The decide(ILoggingEvent event) method of each filter is called in sequence. This method returns one of the FilterReply enumeration values, i.e. one of DENY, NEUTRAL or ACCEPT. If the value returned by decide() is DENY, then the log event is dropped immediately without consulting the remaining filters. If the value returned is NEUTRAL, then the next filter in the list is consulted. If there are no further filters to consult, then the logging event is processed normally. If the returned value is ACCEPT, then the logging event is processed immediately skipping the invocation of the remaining filters.
+Logback has three modules, logback-core, logback-classic and logback-access
+
+If a given logger is not assigned a level, then it inherits one from its closest ancestor with an assigned level.
+The effective level for a given logger L, is equal to the first non-null level in its hierarchy, starting at L itself and proceeding upwards in the hierarchy towards the root logger.
+By definition, the printing method determines the level of a logging request. A logging request is said to be enabled if its level is higher than or equal to the effective level of its logger.
+possible levels TRACE->DEBUG->INFO->WARN->ERROR
+level of 
+request p							effective level q
+				TRACE		DEBUG	INFO	WARN	ERROR	OFF
+TRACE		YES			NO			NO		NO		NO			NO
+DEBUG	YES			YES			NO		NO		NO			NO
+INFO		YES			YES			YES		NO		NO			NO
+WARN		YES			YES			YES		YES		NO			NO
+ERROR	YES			YES			YES		YES		YES			NO
+
+// get a logger instance named "com.foo". Let us further assume that the
+// logger is of type  ch.qos.logback.classic.Logger so that we can
+// set its level
+ch.qos.logback.classic.Logger logger = 
+        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("com.foo");
+		
+Calling the LoggerFactory.getLogger method with the same name will always return a reference to the exact same logger object.
+In logback speak, an output destination is called an appender.
+Currently, appenders exist for the console, files, remote socket servers, to MySQL, PostgreSQL, Oracle and other databases, JMS, and remote UNIX Syslog daemons
+More than one appender can be attached to a logger
+
+Logger Name		Attached Appenders		Additivity Flag		Output Targets					Comment
+root					A1								ot applicable			A1									Since the root logger stands at the top of the logger hierarchy, the additivity flag does not apply to it.
+x						A-x1, A-x2					true						A1, A-x1, A-x2					Appenders of "x" and of root.
+x.y					none								true						A1, A-x1, A-x2					Appenders of "x" and of root.
+x.y.z					A-xyz1							true						A1, A-x1, A-x2, A-xyz1		Appenders of "x.y.z", "x" and of root.
+security			A-sec							false						A-sec								No appender accumulation since the additivity flag is set to false. Only appender A-sec will be used.
+security.access	none								true						A-sec								Only appenders of "security" because the additivity flag in "security" is set to false.
+
+additivity flag set to false such that its logging output will be sent to the appender named FILE but not to any appender attached higher in the hierarchy
+Appenders are ultimately responsible for outputting logging events. However, they may delegate the actual formatting of the event to a Layout or to an Encoder object.
+PatternLayout and format modifiers are in https://logback.qos.ch/manual/layouts.html
+Encoders are responsible for transforming an event into a byte array as well as writing out that byte array into an OutputStream.
+Layouts are logback components responsible for transforming an incoming event into a String. 
+
+Везде logback.xml прописывается в головном модуле (app). Видимо потому, что он кидается в самом конце и перетирает остальные логбэки. 
+<appender name="ROLLING-FILE"
+                  class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <encoder>
+                <pattern>${FILE_LOG_PATTERN}</pattern>
+            </encoder>
+            <file>${LOG_FILE}</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                <fileNamePattern>${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+                <timeBasedFileNamingAndTriggeringPolicy
+                        class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                    <maxFileSize>10MB</maxFileSize>
+                </timeBasedFileNamingAndTriggeringPolicy>
+            </rollingPolicy>
+        </appender>
+
+4. Spring JMX
+
+5. 
+
+6. Common 
+ 6.1.Map map = new HashMap() {{put("foo", 1); put("bar", 2);}};
+Here the nested braces create an instance initializer. The object bound to map is not a HashMap, its class is an anonymous class extending HashMap. (That means if you have a PMD rule about classes needing to declare serial uids then it will complain about this.)
+ 6.2 
+
+
+
+7. Concurrency
+
+Singleton with double-checked locking (DCL)
+@NotThreadSafe
+public class DoubleCheckedLocking {
+private static Resource resource;
+public static Resource getInstance() {
+if (resource == null) {
+synchronized (DoubleCheckedLocking.class) {
+if (resource == null)
+resource = new Resource();
+}
+}
+return resource;
+}
+}
+
+
+@NotThreadSafe
+public class UnsafeLazyInitialization {
+	private static Resource resource;
+	public static Resource getInstance() {
+		if (resource == null)
+		resource = new Resource(); // unsafe publication
+		return resource;
+	}
+}
+
+@ThreadSafe
+public class SafeLazyInitialization {
+private static Resource resource;
+public synchronized static Resource getInstance() {
+if (resource == null)
+resource = new Resource();
+return resource;
+}
+}
+
+@ThreadSafe
+public class EagerInitialization {
+private static Resource resource = new Resource();
+public static Resource getResource() { return resource; }
+}
+
+
+
+System.currentTimeMillis
+
+For interval timing, always use System.nanoTime rather than
+System.currentTimeMillis. System.nanoTime is both more
+accurate and more precise and is unaffected by adjustments to the system’s real-time clock.
+
+
+String.intern()
+Though Java automatically interns all Strings by default, remember that we only need to intern strings when they are not constants, 
+and we want to be able to quickly compare them to other interned strings. 
+The intern() method should be used on strings constructed with new String() in order to compare them by == operator.7
+!!!!!!!!
+When the intern() method is invoked on a String object it looks the string contained by this String object in the pool, 
+if the string is found there then the string from the pool is returned. Otherwise, this String object is added to the pool and a reference to this String object is returned.
+!!!!!!!!
+
+Reference Types
+strong, weak, soft, and phantom references. 
+The difference between the types of references is that the objects on the heap they refer to are eligible for garbage collecting under the different criteria.
+  Strong Reference
+The object on the heap it is not garbage collected while there is a strong reference pointing to it, or if it is strongly reachable through a chain of strong references.
+  Weak Reference
+a weak reference to an object from the heap is most likely to not survive after the next garbage collection process
+WeakReference<StringBuilder> reference = new WeakReference<>(new StringBuilder());
+WHY do they need?
+A nice use case for weak references are caching scenarios. 
+  Soft Reference
+The Javadocs state, “all soft references to softly-reachable objects are guaranteed to have been cleared before the virtual machine throws an OutOfMemoryError.”
+  Phantom Reference
+
+COLLECTIONS
+
+
+1. HASHMAP
+- основные данные хранятся в таблице Node<>. Нода имеет ссылку на следующую, хэш и значение
+- таблица имеет фиксированный размер (init 16). И ее размер увеличивается кратно 2, т.к. индекс в таблице вычисляется как
+(n - 1) & hash(key), т.е. если размер 16, то получим 15(2) & hash = 0...01111 & hash -> что всегда даст значение от 0 до 15
+- операции size(), isEmpty(), keySet(), values() выполняются за O(1), т.к. для них есть отдельные поля и их учет ведется синхронно с модификацией основной таблицы.
+- операция put(key, value) алгоритм: 
+ a) index = (n-1) & hash(key.hashCode())
+ b) p = tab[index]
+ c) if (p== null) добавляем новую ноду в индекс
+ d) else проверяем (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))) - так сделано для скорости. Проверяем хэш, т.к. если они разные, то объекты автоматом разные
+и дальше проверять не надо. Если одинаковые, то сравниваем ключи. Опять же для ускорения сначала сравниваются по ссылкепотом по equals.
+ e) перебираем список от начала, пока невстретим условие d) еще раз. Не встретили, значит пишем в конец
+ f) если количество элементов списка в индексе больше TREEIFY_THRESHOLD = 8, то список трансформируется в red-black tree
+- операция get(key) алгоритм: 
+ a) index = (n-1) & hash(key.hashCode())
+ b) p = tab[index]
+ c) if (p== null) возвращаем null или то,что лежит в key==null
+ d) else проверяем (p.hash == hash && ((k = p.key) == key || (key != null && key.equals(k))) - причина та же. Если первый элемент не подходит, то ищем по Listу или дереву.
+ 
+2. ARRAYLIST
+- может выскочить OutOfMemory из-за структуры данных в листе, т.к. данные находятся в массиве и представляют собой последовательные ячейки памяти, которые кто-то может уже занять
+- хранение объектов происходит сюда transient Object[] elementData; - The array buffer into which the elements of the ArrayList are stored
+- при создании new ArrayList(); elementData созается как пустой массив нулевой длины, но при добавлении первого элемента увеличивается. (тоже трата времени)
+- private int size; - The size of the ArrayList (the number of elements it contains) - это не капасити. 
+- private Object[] grow() - метод который вызываетс, если при добавлении элемента size превысил капасити. Он создает новый массив за счет Arrays.copyOf(откуда: elementData, куда: новыйМассив с объемом newCapacity = oldCapacity + (oldCapacity >> 1);)
+- public boolean add(E e) - Appends the specified element to the end of this list. Специфика работы. Если добавляется крайний элемент (в отличие от мапы, у которой есть loadfactor),
+то размер массива увеличивается через grow(). При любом раскладе вызывается System.arrayCopy(src, srcPos, dest, destPos, length). Просто если элементдобавляется в конец
+и еще есть место в массиве, то length == 0 (size - index) и ничего не копируется.
+- public E remove(int index) - тоже работает с System.arrayCopy при сдвиге правой части массива влево
+
+3. TREEMAP
+- вместо массива тут красно-черное дерево. и положение определяется не по индексу и хэш коду, а по компаратору или compareTo между элементами. Поэтому важно писать это как можно более быстрым.
+- прелесть этой коллекции в том, что она реализуя интерфейсы SortedMap и NavigableMap позволяет делать разные интересные выборки, поиски по ключам и пр. 
+- основные поля: compartor, Entry<K,V> root, keySet, values, 
+- при поиске, если нет компаратора, то все базируется на том, что keys являются Comparable (позволяет сделать key1.compareTo(key2)). Comparator делает comparator.compare(key1, key2)
+- поиск для вставки начинается с root, и в зависимости от сравнения покеям идет либо влево, либо вправо. Если находит одинаковый, то его value перезаписывается. Если не находит
+и упирается в null, то создается новый лист и дерево перетряхивается после этого при необходимости. 
+- удаление аналогично поиску. тоже при необходимости перетряхивается для лучшей сбалансированности. 
+
+4. HASHSET
+- основные члены класса private transient HashMap<E,Object> map. Т.е. сэт использует только ключи хэшмапы. 
+- поиск в лучшем случае O(1) если элемент первый в бакете, еси нет то зависит от размера бакета в худшем случае.
+- принцип работы: при добавлении элемента выполняется map.put(element, PRESENT), где private static final Object PRESENT = new Object().
+т.е. нет никакого компаратора. Просто если находится такой же key в мапе, то меняется его value c PRESENT на .... PRESENT.
+- здесь есть своя реализация методов сериализации. 
+
+5. TREESET
+- открываю я трисет и вижу тот же PRESENT, основное поле - private transient NavigableMap<E,Object> m, а при создании инстанса инициализируется TreeMapой
+- как и TreeMap имплементит NavigableSet, SortedSet. Т.е. тоже должен бытькомпаратор или элементы должны быть Comparable.
+- добавление и удаление через тримапу.
+
+
+
+O() NOTATION
+1.
+- «О» большое - метрика, используемая для описания эффективности алгоритмов.
+- О описывает верхнюю границу вычислительной сложности
+- Синтаксис «О» большого описывает только скорость роста. По этой причине константы исключаются из описания сложности.
+- Если алгоритм построен по принципу «делаем это, а когда работа будет закон­
+чена, делаем то», сложности суммируются.
+- Если алгоритм построен по принципу «каждый раз, когда делается это, сделать
+то», сложности перемножаются.
+
+-Сложность Log N
+Полезный практический совет: когда вы встречаете задачу, в которой количество
+элементов последовательно делится надвое, скорее всего, время выполнения составит O(log N).
+По этой же причине поиск элемента в сбалансированном дереве бинарного поиска выполняется за время O(log N). После каждого сравнения происходит переход
+налево или направо. С каждой стороны находится половина узлов, поэтому пространство задачи каждый раз сокращается вдвое.(Красно-черное дерево в TreeMap)
+
+- O(2^N) Сложность рекурсивных алгоритмов. 
+int f (int n ) {
+	if ( п <= 0) return 1 ;
+	return f(n - 1) + f(n - 1);
+}
+Допустим, вы вызвали f ( 4 ) . Этот вызов порождает два вызова f ( З ) . Каждый из вызовов f ( з ) вызывает f ( 2 ) , пока мы не доберемся до f ( 1 )
+Если вы используете рекурсивную функцию, которая порождает несколько вызовов, время выполнения часто (хотя
+и не всегда) имеет вид О(веmвu^глубина), где ветви - количество ветвлений при каждом рекурсивном вызове.
+
+2. Вот почему StringBuilder лучше иногда чем String
+Допустим, вам потребовалось объединить строки из некоторого списка. Как оценить
+время выполнения этого кода? Для простоты будем считать, что список состоит из
+п строк одинаковой длины х.
+Striпg j oiпWord s ( Striпg [ ] words ) {
+	Striпg sепtепсе = " " ;
+	for ( Striпg w : words ) {
+		sепtепсе = sепtепсе + w;
+	}
+	returп sепtепсе;
+}
+При каждой конкатенации создается новая копия строки, куда копируются посим­
+вольно две строки. При первой итерации будет скопировано х символов. Вторая
+итерация скопирует 2х символов, третья Зх. В итоге время выполнения можно
+оценить как О(х + 2х + ... + пх) = О(хп2).
+Почему O(xn2 ) ? Потому что 1 + 2 + . . . + п = n ( n+l } /2 , или О(п2)
+
+СОРТИРОВКА
+
+1. Быстрая сортировка
+Время выполнения в среднем случае: О(п log(n)), в худшем случае: О(п2 )
+Алгоритм быстрой сортировки выбирает случайный «опорный элемент, а затем меняет местами значения
+в массиве таким образом, чтобы элементы, меньшие опорного элемента, 
+предшествовали тем элементам, значения которых превышают значение опорного. Далее
+левая и правая части полученного «частично отсортированного массива рекурсивно сортируются по той же схеме.
+
+2. Пузырек
+Время выполнения в худшем и среднем случае: О(п2).
+Обработка начинается с первых элементов массива; они меняются местами, если
+первое значение больше второго. Затем алгоритм переходит к следующей паре
+и так далее, пока массив не будет отсортирован. В процессе сортировки меньшие
+элементы постепенно «всплывают�> в начало списка.
+
+ПОИСК
+1. бинарный поиск
+При бинарном поиске значение х ищется в отсортированном массиве из N элементов. Сначала х сравнивается с серединой
+массива. Если х и средний элемент равны, поиск завершается. Если х меньше среднего элемента, то поиск проводится в левой части массива, а если больше - то в правой.
+
+
+
+
+
+
+
+
+public class Quote {
+    private String symbol;
+    private double price;
+    private Date timestamp;
+}
+
+public interface Storage {
+
+    // Save Quote events into storage
+    public void put(Quote data);
+    
+    // Returns most recent quote for this time
+    public Quote get(String symbol, Date timestamp);
+
+}
+
+public class StorageImpl implements Storage {
+    private Object lock2 = new Onbject();
+    ReentrantLock<> lock =....;
+    private Map<String, NavigableMap<Date, Quote>> symbolToQuotaMap = new HashMap<>();
+    
+    @Override
+    public synchronized void put(Quote data) throws C... {
+        //Objects.nonNull(data);
+        lock.lock();
+        try{
+        if(data.getSymbol() != null && data.getTimestamp() != null) {
+           Map<Date, Quote> timeToQouteMap = symbolToQuotaMap.get(data.getSymbol());     
+           if(timeToQouteMap == null) {
+               timeToQouteMap = new TreeMap<>();
+           }      
+           timeToQouteMap.put(data.getTimestamp(), data));
+           symbolToQuotaMap.put(data.getSymbol(), timeToQouteMap);
+        } else {
+           LOGGER.warn("message {}", data)
+           new CustomException("")
+        }
+        } finnally {
+           lock.
+        }
+    }
+
+    @Override
+    public synchronized  Quote get(String symbol, Date timestamp) {
+        NavigableMap<Date, Quote> timeToQouteMap = symbolToQuotaMap.get(data.getSymbol());
+        if(timeToQouteMap != null) {
+            return timeToQouteMap.someBeautifulNavigableMethod(data.getTimestamp());
+        } else {
+        return null;
+        }
+    }
+}
+
+
+
+Как сделать отправку с разбивкой на bulk 
+	final List<R> result = new ArrayList<>();
+	final Set<Future<R>> futures = new HashSet<>();
+	if (data.size() > bulkSize) {
+		for (int i = 0; i < data.size(); i += bulkSize) {
+			final int toIndex = i + bulkSize < data.size() ? i + bulkSize : data.size();
+			final List<T> subList = data.subList(i, toIndex);
+			futures.add(executor.submit(() -> function.apply(subList)));
+		}
+		for (Future<R> future : futures) {
+			try {
+				result.add(future.get());
+			} catch (InterruptedException | ExecutionException e) {
+				throw new GeoEdgeChannelException(e);
+			}
+		}
+	} else {
+		result.add(function.apply(data));
+	}
+
+Как считать респонз, где API возвращает либо один элемент, либо много таких же, но объединенных в группу
+@JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Response {
+        // это содержание одного элемента
+		private Status status;
+        @JsonProperty("num_of_ads")
+        private Integer numOfAds;
+        @JsonProperty("scan_id")
+        private String scanId;
+		
+        private List<Response> scans; - если API возвращает список
+
+Поиск минимума, максимума по коллекции
+final LocalDateTime minScanDateTime = Collections
+                    .min(scannedCreatives, Comparator.comparing(CreativeAudit::getLastScanDateTime))
+                    .getLastScanDateTime();
+
+
+Посмотреть количество коннектов хоста:
+netstat -natp | grep ESTABLISHED | wc -l
+
+
+
+@SpringApplicationConfiguration
+This is the annotation which addresses shortcomings of @ContextConfiguration annotation 
+discussed in the previous section. It provides full Spring Boot treatment to your test classes 
+e.g. it not only load the beans in Spring application context but also enable logging and loads properties from application.properties file.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

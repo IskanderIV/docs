@@ -1,0 +1,45 @@
+Maven
+1. In the parent POM, the main difference between the <dependencies> and <dependencyManagement> is this:
+Artifacts specified in the <dependencies> section will ALWAYS be included as a dependency of the child module(s).
+Artifacts specified in the <dependencyManagement> section, will only be included in the child module if they were also specified in the <dependencies> section of the child module itself. 
+Why is it good you ask? because you specify the version and/or scope in the parent, and you can leave them out when specifying the dependencies in the child POM. 
+This can help you use unified versions for dependencies for child modules, without specifying the version in each child module.
+
+2. Simply put, there’re two types of dependencies in Maven direct and transitive.
+
+Direct dependencies are the ones that are explicitly included in the project. These can be included in the project using <dependency> tags:
+<dependency>
+    <groupId>junit</groupId>
+    <artifactId>junit</artifactId>
+    <version>4.12</version>
+</dependency>
+Transitive dependencies, on the other hand, are dependencies required by our direct dependencies. Required transitive dependencies are automatically included in our project by Maven.
+We can list all dependencies including transitive dependencies in the project using: mvn dependency:tree command.
+
+
+
+3. Provided
+This scope is used to mark dependencies that should be provided at runtime by JDK or a container, hence the name.
+
+A good use case for this scope would be a web application deployed in some container, where the container already provides some libraries itself.
+
+4. repositories
+<distributionManagement>
+    <repository>
+        <id>...</id>
+        <name>...</name>
+        <url>...</url>
+    </repository>
+</distributionManagement> 
+
+<repositories>
+    <repository>
+        <id>...</id>
+        <name>...</name>
+        <layout>default</layout>
+        <url>...</url>
+    </repository>
+</repositories>
+My understanding  repository element under distributionManagement element specifies where it will deploy the artifacts at the time of deployment. 
+It will come into picture only while mvn deploy i.e deployment time not during mvn install i.e build time. Right?
+repository element under repositories element specifies from where dependencies needs to be picked up. It will come into picture only while mvn install not during mvn deploy
